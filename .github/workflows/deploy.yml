@@ -1,0 +1,72 @@
+name: Deploy Uptime Monitor to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ── CI: Build & verify before touching the server ──────────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install & build backend
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install & build frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+  # ── CD: Deploy to EC2, only if build succeeded ──────────────────────────────
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            if [ ! -d "uptime-monitor" ]; then
+              git clone https://github.com/${{ github.repository }}.git uptime-monitor
+            fi
+
+            cd uptime-monitor
+            git reset --hard HEAD
+            git pull origin main
+
+            # ── Write secrets into .env (read by docker-compose.yml) ────────
+            cat > .env << EOF
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            EMAIL_USER=${{ secrets.EMAIL_USER }}
+            EMAIL_PASS=${{ secrets.EMAIL_PASS }}
+            EOF
+
+            # ── Rebuild only changed images, minimal downtime ───────────────
+            docker compose up -d --build
+
+            # ── Remove old/dangling images to free disk space ───────────────
+            docker image prune -af
+
+            # ── Health check ──────────────────────────────────────────────
+            sleep 10
+            curl -f http://localhost/api || (echo "Health check failed!" && exit 1)
