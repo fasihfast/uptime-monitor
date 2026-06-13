@@ -45,7 +45,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
-          script: |
+         script: |
             if [ ! -d "uptime-monitor" ]; then
               git clone https://github.com/${{ github.repository }}.git uptime-monitor
             fi
@@ -63,6 +63,7 @@ jobs:
 
             # ── Rebuild only changed images, minimal downtime ───────────────
             docker compose up -d --build
+            docker compose restart nginx
 
             # ── Remove old/dangling images to free disk space ───────────────
             docker image prune -af
