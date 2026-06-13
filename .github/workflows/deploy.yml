@@ -45,7 +45,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
-         script: |
+          script: |
             if [ ! -d "uptime-monitor" ]; then
               git clone https://github.com/${{ github.repository }}.git uptime-monitor
             fi
